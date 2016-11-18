@@ -1,0 +1,147 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this file,
+// You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A simple url parser (No idna support).
+
+use core::convert::From;
+use core::num;
+use core::str;
+use core::str::FromStr;
+
+#[derive(Debug)]
+pub enum UrlParsingError {
+    Utf8Error(str::Utf8Error),
+    ParseIntError(num::ParseIntError),
+    DelimiterNotFound,
+    UnexpectedError,
+}
+
+impl From<str::Utf8Error> for UrlParsingError {
+    fn from(err: str::Utf8Error) -> Self {
+        UrlParsingError::Utf8Error(err)
+    }
+}
+
+impl From<num::ParseIntError> for UrlParsingError {
+    fn from(err: num::ParseIntError) -> Self {
+        UrlParsingError::ParseIntError(err)
+    }
+}
+
+fn until_and_consume(input: &[u8], delim: u8) -> Result<(&[u8], &[u8]), UrlParsingError> {
+    for i in 0..input.len() {
+        if input[i] == delim {
+            return Ok((&input[i + 1..], &input[0..i]));
+        }
+    }
+    // Delimiter not found...
+    Err(UrlParsingError::DelimiterNotFound)
+}
+
+fn until(input: &[u8], delim: u8) -> Result<(&[u8], &[u8]), UrlParsingError> {
+    for i in 0..input.len() {
+        if input[i] == delim {
+            return Ok((&input[i..], &input[0..i]));
+        }
+    }
+    // Delimiter not found...
+    Err(UrlParsingError::DelimiterNotFound)
+}
+
+fn first_pos_of(input: &[u8], delim: u8) -> Option<usize> {
+    for i in 0..input.len() {
+        if input[i] == delim {
+            return Some(i);
+        }
+    }
+    None
+}
+
+// Returns (scheme, host, port, path)
+pub fn parse(url: &str) -> Result<(&str, &str, u16, &str), UrlParsingError> {
+    let buffer = url.as_bytes();
+
+    // Get the scheme
+    let mut res = until_and_consume(buffer, b':')?;
+    let scheme = str::from_utf8(res.1).unwrap(); // TODO: don't unwrap
+
+    res = until_and_consume(res.0, b'/')?;
+    res = until_and_consume(res.0, b'/')?;
+
+    // Check if we have a `:` and/or `/` and in which order, to figure out if there is a port
+    // number and a non default path.
+
+    let c_pos = first_pos_of(res.0, b':');
+    let s_pos = first_pos_of(res.0, b'/');
+
+    let mut host = "";
+    let mut path = "/";
+    let mut port: u16 = match scheme {
+        "http" => 80,
+        "https" => 443,
+        _ => 0,
+    };
+
+    if c_pos.is_some() && s_pos.is_some() {
+        if c_pos.unwrap() < s_pos.unwrap() {
+            // We have a : before /, split the host:port fragment.
+            res = until_and_consume(res.0, b':')?;
+            host = str::from_utf8(res.1)?; // TODO: don't unwrap
+            res = until(res.0, b'/')?;
+            let port_string = str::from_utf8(res.1).unwrap(); // TODO: don't unwrap
+            port = u16::from_str(port_string).unwrap(); // TODO: don't unwrap
+        } else {
+            // The : is after /, hence not a port delimiter.
+            res = until(res.0, b'/')?;
+            host = str::from_utf8(res.1).unwrap(); // TODO: don't unwrap
+        }
+
+        // The remaining part of the url is the path.
+        // We remove the # part if any.
+        if first_pos_of(res.0, b'#').is_some() {
+            res = until_and_consume(res.0, b'#')?;
+            path = str::from_utf8(res.1).unwrap(); // TODO: don't unwrap
+        } else {
+            path = str::from_utf8(res.0).unwrap(); // TODO: don't unwrap
+        }
+    } else if !s_pos.is_some() {
+        // No / found, just use the remaining as the host:port
+        if c_pos.is_some() {
+            res = until_and_consume(res.0, b':')?;
+            host = str::from_utf8(res.1).unwrap(); // TODO: don't unwrap
+            let port_string = str::from_utf8(res.0).unwrap(); // TODO: don't unwrap
+            port = u16::from_str(port_string).unwrap(); // TODO: don't unwrap
+        } else {
+            host = str::from_utf8(res.0).unwrap(); // TODO: don't unwrap
+        }
+    }
+
+
+    Ok((scheme, host, port, path))
+}
+
+#[test]
+fn url_test() {
+    let url = parse("http://localhost").unwrap();
+    assert_eq!(url, ("http", "localhost", 80, "/"));
+
+    let url = parse("https://localhost").unwrap();
+    assert_eq!(url, ("https", "localhost", 443, "/"));
+
+    let url = parse("http://localhost:8080").unwrap();
+    assert_eq!(url, ("http", "localhost", 8080, "/"));
+
+    let url = parse("http://localhost:8080/").unwrap();
+    assert_eq!(url, ("http", "localhost", 8080, "/"));
+
+    let url = parse("http://localhost:8080/index.html").unwrap();
+    assert_eq!(url, ("http", "localhost", 8080, "/index.html"));
+
+    let url = parse("http://localhost:8080/index.html#hash").unwrap();
+    assert_eq!(url, ("http", "localhost", 8080, "/index.html"));
+
+    let url = parse("http://localhost:8000/path/to/index.html?foo=bar").unwrap();
+    assert_eq!(url,
+               ("http", "localhost", 8000, "/path/to/index.html?foo=bar"));
+}

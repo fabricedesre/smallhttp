@@ -1,0 +1,4 @@
+[package]
+name = "smallhttp"
+version = "0.1.0"
+authors = ["Fabrice Desré <fabrice@desre.org>"]
