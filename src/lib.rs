@@ -52,23 +52,32 @@ impl HttpMethod {
 // TODO: complete this list.
 #[derive(Clone, Debug, PartialEq)]
 pub enum HttpHeader {
-    Host,
     ContentLength,
     ContentType,
+    Date,
     Etag,
+    Host,
+    LastModified,
+    Server,
     Other(String),
 }
 
 impl From<String> for HttpHeader {
     fn from(item: String) -> HttpHeader {
-        if item == "Host:" {
-            HttpHeader::Host
-        } else if item == "Content-Length:" {
+        if item == "Content-Length:" {
             HttpHeader::ContentLength
         } else if item == "Content-Type:" {
             HttpHeader::ContentType
+        } else if item == "Date:" {
+            HttpHeader::Date
         } else if item == "ETag:" {
             HttpHeader::Etag
+        } else if item == "Host:" {
+            HttpHeader::Host
+        } else if item == "Last-Modified:" {
+            HttpHeader::LastModified
+        } else if item == "Server:" {
+            HttpHeader::Server
         } else {
             HttpHeader::Other(String::from(item))
         }
@@ -79,10 +88,13 @@ impl HttpHeader {
     fn as_string(&self) -> String {
         // We add the space after the header name to simplify serialization.
         let txt = match *self {
-            HttpHeader::Host => "Host: ".to_owned(),
             HttpHeader::ContentLength => "Content-Length: ".to_owned(),
             HttpHeader::ContentType => "Content-Type: ".to_owned(),
+            HttpHeader::Date => "Date: ".to_owned(),
             HttpHeader::Etag => "ETag: ".to_owned(),
+            HttpHeader::Host => "Host: ".to_owned(),
+            HttpHeader::LastModified => "LastModified: ".to_owned(),
+            HttpHeader::Server => "Server: ".to_owned(),
             HttpHeader::Other(ref name) => format!("{} ", name),
         };
         txt
@@ -101,7 +113,7 @@ pub enum ClientState {
     Done,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum HttpError {
     BadState,
     BadUrl(url::UrlParsingError),
@@ -242,7 +254,8 @@ impl<'a, T> Client<'a, T> {
 
         let mut channel = StringChannel::new(&status_line);
         let http_version = String::from(channel.read_string_until(&mut buffer, " ")?);
-        if http_version != "HTTP/1.1" {
+        // Accept both HTTP 1.0 and 1.1.
+        if http_version != "HTTP/1.0" && http_version != "HTTP/1.1" {
             return Err(HttpError::InvalidVersion);
         }
         let status_code = u16::from_str(channel.read_string_until(&mut buffer, " ")?)
@@ -319,6 +332,47 @@ fn test_get() {
                (HttpHeader::ContentType, String::from("text/html; charset=UTF-8")));
     assert_eq!(response.headers[1],
                (HttpHeader::ContentLength, String::from("138")));
+}
+
+#[test]
+fn test_get_1_0() {
+    let http_channel = StringChannel::new("HTTP/1.0 200 OK\r\nContent-Type: text/html; \
+                                           charset=UTF-8\r\nContent-Length: \
+                                           138\r\n\r\n<html><head><title>An Example \
+                                           Page</title></head><body>Hello World, this is a very \
+                                           simple HTML document.</body></html>");
+    let mut client = Client::new(http_channel);
+    let response = client.get("http://localhost:8000/test.html")
+        .open()
+        .unwrap()
+        .send(&[])
+        .unwrap()
+        .response(|_| true)
+        .unwrap();
+    assert_eq!(response.status_code, 200);
+    assert_eq!(response.status, "OK");
+    assert_eq!(response.headers.len(), 2);
+    assert_eq!(response.headers[0],
+               (HttpHeader::ContentType, String::from("text/html; charset=UTF-8")));
+    assert_eq!(response.headers[1],
+               (HttpHeader::ContentLength, String::from("138")));
+}
+
+#[test]
+fn test_get_1_2() {
+    let http_channel = StringChannel::new("HTTP/1.2 200 OK\r\nContent-Type: text/html; \
+                                           charset=UTF-8\r\nContent-Length: \
+                                           138\r\n\r\n<html><head><title>An Example \
+                                           Page</title></head><body>Hello World, this is a very \
+                                           simple HTML document.</body></html>");
+    let mut client = Client::new(http_channel);
+    let response = client.get("http://localhost:8000/test.html")
+        .open()
+        .unwrap()
+        .send(&[])
+        .unwrap()
+        .response(|_| true);
+    assert_eq!(response.err().unwrap(), HttpError::InvalidVersion);
 }
 
 #[test]

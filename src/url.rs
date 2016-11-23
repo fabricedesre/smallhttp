@@ -9,7 +9,7 @@ use core::num;
 use core::str;
 use core::str::FromStr;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum UrlParsingError {
     Utf8Error(str::Utf8Error),
     ParseIntError(num::ParseIntError),
