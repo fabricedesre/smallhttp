@@ -15,10 +15,15 @@ extern crate std;
 
 /// A simple http library usable in embedded environments without std support.
 
+use collections::{String, Vec};
+use collections::borrow::ToOwned;
 use core::convert::From;
+use core::ops::Fn;
+use core::str::FromStr;
+use core::str;
 
 pub mod traits;
-use traits::{Channel, ChannelError};
+use traits::{Channel, ChannelError, StringChannel};
 
 mod url;
 // mod parser;
@@ -45,21 +50,40 @@ impl HttpMethod {
 }
 
 // TODO: complete this list.
+#[derive(Clone, Debug, PartialEq)]
 pub enum HttpHeader {
     Host,
     ContentLength,
     ContentType,
     Etag,
+    Other(String),
+}
+
+impl From<String> for HttpHeader {
+    fn from(item: String) -> HttpHeader {
+        if item == "Host:" {
+            HttpHeader::Host
+        } else if item == "Content-Length:" {
+            HttpHeader::ContentLength
+        } else if item == "Content-Type:" {
+            HttpHeader::ContentType
+        } else if item == "ETag:" {
+            HttpHeader::Etag
+        } else {
+            HttpHeader::Other(String::from(item))
+        }
+    }
 }
 
 impl HttpHeader {
-    fn as_str(&self) -> &str {
+    fn as_string(&self) -> String {
         // We add the space after the header name to simplify serialization.
         let txt = match *self {
-            HttpHeader::Host => "Host: ",
-            HttpHeader::ContentLength => "Content-Length: ",
-            HttpHeader::ContentType => "Content-Type: ",
-            HttpHeader::Etag => "ETag: ",
+            HttpHeader::Host => "Host: ".to_owned(),
+            HttpHeader::ContentLength => "Content-Length: ".to_owned(),
+            HttpHeader::ContentType => "Content-Type: ".to_owned(),
+            HttpHeader::Etag => "ETag: ".to_owned(),
+            HttpHeader::Other(ref name) => format!("{} ", name),
         };
         txt
     }
@@ -84,6 +108,8 @@ pub enum HttpError {
     ChannelError(ChannelError),
     UnsupportedScheme,
     UnknownError,
+    InvalidVersion,
+    InvalidStatusCode,
 }
 
 impl From<url::UrlParsingError> for HttpError {
@@ -98,10 +124,11 @@ impl From<ChannelError> for HttpError {
     }
 }
 
-pub enum ResponseElement<'a> {
-    Status(i16),
-    Header(HttpHeader, &'a str),
-    Body(&'a [u8]),
+pub struct Response<'a, T: 'a> {
+    status_code: u16,
+    status: String,
+    headers: Vec<(HttpHeader, String)>,
+    body: &'a mut T,
 }
 
 pub struct Client<'a, T> {
@@ -151,7 +178,7 @@ impl<'a, T> Client<'a, T> {
         self.channel.send_str(path)?;
         self.channel.send_str(HTTP_VERSION)?;
         // HTTP 1.1 only mandatory header is the Host one.
-        self.channel.send_str(HttpHeader::Host.as_str())?;
+        self.channel.send_str(&HttpHeader::Host.as_string())?;
         self.channel.send_str(host)?;
         self.channel.send_str(LINE_END)?;
 
@@ -167,7 +194,7 @@ impl<'a, T> Client<'a, T> {
         self.state = ClientState::Error;
 
         for header in headers {
-            self.channel.send_str(header.0.as_str())?;
+            self.channel.send_str(&header.0.as_string())?;
             self.channel.send_str(header.1)?;
             self.channel.send_str(LINE_END)?;
         }
@@ -183,7 +210,7 @@ impl<'a, T> Client<'a, T> {
         self.headers(&[(name, value)])
     }
 
-    pub fn body(&mut self, body: &[u8]) -> Result<&mut Self, HttpError>
+    pub fn send(&mut self, body: &[u8]) -> Result<&mut Self, HttpError>
         where T: Channel
     {
         assert_eq!(self.state, ClientState::HeadersOrBody);
@@ -201,34 +228,58 @@ impl<'a, T> Client<'a, T> {
         Ok(self)
     }
 
-    // Reads a \r\n terminated line, up to the max length of the passed string.
-    fn read_line(&mut self, buffer: &mut [u8]) -> Result<&str, HttpError>
-        where T: Channel
-    {
-        let state = self.state.clone();
-        self.state = ClientState::Error;
-        let mut i: usize = 0;
-        loop {
-            if i == buffer.len() {
-                break;
-            }
-        }
-        Ok("")
-    }
-
-    pub fn response(&mut self, sink: fn(what: &ResponseElement)) -> Result<&mut Self, HttpError>
-        where T: Channel
+    pub fn response<F>(&mut self, filter: F) -> Result<Response<T>, HttpError>
+        where T: Channel + Clone,
+              F: Fn(HttpHeader) -> bool
     {
         assert_eq!(self.state, ClientState::ReadResponse);
         self.state = ClientState::Error;
 
-        // Stack buffer for line based reads.
-        let buffer = [0u8; 256];
+        let mut buffer = [0u8; 256];
+        let buff_size = buffer.len();
 
-        // Read the initial response line.
+        let status_line = String::from(self.channel.read_string_until(&mut buffer, "\r\n")?);
+
+        let mut channel = StringChannel::new(&status_line);
+        let http_version = String::from(channel.read_string_until(&mut buffer, " ")?);
+        if http_version != "HTTP/1.1" {
+            return Err(HttpError::InvalidVersion);
+        }
+        let status_code = u16::from_str(channel.read_string_until(&mut buffer, " ")?)
+            .map_err(|_| HttpError::InvalidStatusCode)?;
+
+        // The status is the remainder of the line.
+        let size = channel.read_to_end(&mut buffer, buff_size)?;
+        let status = String::from(str::from_utf8(&buffer[0..size]).unwrap());
+
+        // Read headers.
+        let mut headers = Vec::new();
+        loop {
+            let header_line = String::from(self.channel.read_string_until(&mut buffer, "\r\n")?);
+            if header_line.len() == 0 {
+                break;
+            }
+
+            let mut channel = StringChannel::new(&header_line);
+            let header_name = String::from(channel.read_string_until(&mut buffer, " ")?);
+
+            // Check if we are interested in this header before reading the value.
+            let header_name = HttpHeader::from(header_name);
+            if filter(header_name.clone()) {
+                // The status is the remainder of the line.
+                let size = channel.read_to_end(&mut buffer, buff_size)?;
+                let header_value = String::from(str::from_utf8(&buffer[0..size]).unwrap());
+                headers.push((header_name, header_value));
+            }
+        }
 
         self.state = ClientState::Done;
-        Ok(self)
+        Ok(Response {
+            status_code: status_code,
+            status: status,
+            headers: headers,
+            body: &mut self.channel,
+        })
     }
 
     fn request(&'a mut self, method: HttpMethod, url: &'a str) -> &mut Self {
@@ -245,37 +296,71 @@ impl<'a, T> Client<'a, T> {
     http_method!(delete, Delete);
 }
 
+
 #[test]
 fn test_get() {
-    struct MockChannel {
-        socket: i16,
-    }
+    let http_channel = StringChannel::new("HTTP/1.1 200 OK\r\nContent-Type: text/html; \
+                                           charset=UTF-8\r\nContent-Length: \
+                                           138\r\n\r\n<html><head><title>An Example \
+                                           Page</title></head><body>Hello World, this is a very \
+                                           simple HTML document.</body></html>");
+    let mut client = Client::new(http_channel);
+    let response = client.get("http://localhost:8000/test.html")
+        .open()
+        .unwrap()
+        .send(&[])
+        .unwrap()
+        .response(|_| true)
+        .unwrap();
+    assert_eq!(response.status_code, 200);
+    assert_eq!(response.status, "OK");
+    assert_eq!(response.headers.len(), 2);
+    assert_eq!(response.headers[0],
+               (HttpHeader::ContentType, String::from("text/html; charset=UTF-8")));
+    assert_eq!(response.headers[1],
+               (HttpHeader::ContentLength, String::from("138")));
+}
 
-    impl MockChannel {
-        fn new() -> Self {
-            MockChannel { socket: -1 }
-        }
-    }
+#[test]
+fn test_post() {
+    let http_channel = StringChannel::new("HTTP/1.1 200 OK\r\nContent-Type: text/html; \
+                                           charset=UTF-8\r\nContent-Length: \
+                                           138\r\n\r\n<html><head><title>An Example \
+                                           Page</title></head><body>Hello World, this is a very \
+                                           simple HTML document.</body></html>");
+    let mut client = Client::new(http_channel);
+    let response = client.post("http://localhost:8000/test.html")
+        .open()
+        .unwrap()
+        .send(&[])
+        .unwrap()
+        .response(|header_name| header_name == HttpHeader::ContentType)
+        .unwrap();
+    assert_eq!(response.status_code, 200);
+    assert_eq!(response.status, "OK");
+    assert_eq!(response.headers.len(), 1);
+    assert_eq!(response.headers[0],
+               (HttpHeader::ContentType, String::from("text/html; charset=UTF-8")));
+}
 
-    impl Channel for MockChannel {
-        fn open(&mut self, host: &str, port: i16, tls: bool) -> Result<(), ChannelError> {
-            Ok(())
-        }
-
-        fn send(&self, data: &[u8], len: usize) -> Result<usize, ChannelError> {
-            Ok(len)
-        }
-
-        fn recv(&self, data: &mut [u8], max_len: usize) -> Result<usize, ChannelError> {
-            Ok(max_len)
-        }
-
-        fn new() -> Self {
-            MockChannel { socket: 0 }
-        }
-    }
-
-    let mut client = Client::new(MockChannel::new());
-    client.get("http://localhost:8000/test.html").open().unwrap().body(&[]);
-    assert_eq!(1, 1);
+#[test]
+fn test_body() {
+    let http_channel = StringChannel::new("HTTP/1.1 200 OK\r\nContent-Type: text/html; \
+                                           charset=UTF-8\r\nContent-Length: \
+                                           138\r\n\r\n<html><head><title>An Example \
+                                           Page</title></head><body>Hello World, this is a very \
+                                           simple HTML document.</body></html>");
+    let mut client = Client::new(http_channel);
+    let response = client.get("http://localhost:8000/test.html")
+        .open()
+        .unwrap()
+        .send(&[])
+        .unwrap()
+        .response(|_| true)
+        .unwrap();
+    let mut buffer = [0u8; 256];
+    let s = response.body.read_string_to_end(&mut buffer).unwrap();
+    assert_eq!(s,
+               "<html><head><title>An Example Page</title></head><body>Hello World, this is a \
+                very simple HTML document.</body></html>");
 }

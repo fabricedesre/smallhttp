@@ -64,7 +64,7 @@ pub fn parse(url: &str) -> Result<(&str, &str, u16, &str), UrlParsingError> {
 
     // Get the scheme
     let mut res = until_and_consume(buffer, b':')?;
-    let scheme = str::from_utf8(res.1).unwrap(); // TODO: don't unwrap
+    let scheme = str::from_utf8(res.1)?;
 
     res = until_and_consume(res.0, b'/')?;
     res = until_and_consume(res.0, b'/')?;
@@ -87,33 +87,33 @@ pub fn parse(url: &str) -> Result<(&str, &str, u16, &str), UrlParsingError> {
         if c_pos.unwrap() < s_pos.unwrap() {
             // We have a : before /, split the host:port fragment.
             res = until_and_consume(res.0, b':')?;
-            host = str::from_utf8(res.1)?; // TODO: don't unwrap
+            host = str::from_utf8(res.1)?;
             res = until(res.0, b'/')?;
-            let port_string = str::from_utf8(res.1).unwrap(); // TODO: don't unwrap
-            port = u16::from_str(port_string).unwrap(); // TODO: don't unwrap
+            let port_string = str::from_utf8(res.1)?;
+            port = u16::from_str(port_string)?;
         } else {
             // The : is after /, hence not a port delimiter.
             res = until(res.0, b'/')?;
-            host = str::from_utf8(res.1).unwrap(); // TODO: don't unwrap
+            host = str::from_utf8(res.1)?;
         }
 
         // The remaining part of the url is the path.
         // We remove the # part if any.
         if first_pos_of(res.0, b'#').is_some() {
             res = until_and_consume(res.0, b'#')?;
-            path = str::from_utf8(res.1).unwrap(); // TODO: don't unwrap
+            path = str::from_utf8(res.1)?;
         } else {
-            path = str::from_utf8(res.0).unwrap(); // TODO: don't unwrap
+            path = str::from_utf8(res.0)?;
         }
     } else if !s_pos.is_some() {
         // No / found, just use the remaining as the host:port
         if c_pos.is_some() {
             res = until_and_consume(res.0, b':')?;
-            host = str::from_utf8(res.1).unwrap(); // TODO: don't unwrap
-            let port_string = str::from_utf8(res.0).unwrap(); // TODO: don't unwrap
-            port = u16::from_str(port_string).unwrap(); // TODO: don't unwrap
+            host = str::from_utf8(res.1)?;
+            let port_string = str::from_utf8(res.0)?;
+            port = u16::from_str(port_string)?;
         } else {
-            host = str::from_utf8(res.0).unwrap(); // TODO: don't unwrap
+            host = str::from_utf8(res.0)?;
         }
     }
 
