@@ -125,10 +125,10 @@ impl From<ChannelError> for HttpError {
 }
 
 pub struct Response<'a, T: 'a> {
-    status_code: u16,
-    status: String,
-    headers: Vec<(HttpHeader, String)>,
-    body: &'a mut T,
+    pub status_code: u16,
+    pub status: String,
+    pub headers: Vec<(HttpHeader, String)>,
+    pub body: &'a mut T,
 }
 
 pub struct Client<'a, T> {
