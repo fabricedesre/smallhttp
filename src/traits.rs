@@ -13,6 +13,7 @@ pub enum ChannelError {
     BufferFull,
     InvalidDelimiterChar,
     InvalidString,
+    TlsUnsupported,
 }
 
 pub trait Channel {
