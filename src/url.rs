@@ -75,7 +75,7 @@ pub fn parse(url: &str) -> Result<(&str, &str, u16, &str), UrlParsingError> {
     let c_pos = first_pos_of(res.0, b':');
     let s_pos = first_pos_of(res.0, b'/');
 
-    let mut host = "";
+    let host;
     let mut path = "/";
     let mut port: u16 = match scheme {
         "http" => 80,
@@ -115,6 +115,19 @@ pub fn parse(url: &str) -> Result<(&str, &str, u16, &str), UrlParsingError> {
         } else {
             host = str::from_utf8(res.0)?;
         }
+    } else {
+        // There is a /, split the host and path.
+        res = until(res.0, b'/')?;
+        host = str::from_utf8(res.1)?;
+
+        // The remaining part of the url is the path.
+        // We remove the # part if any.
+        if first_pos_of(res.0, b'#').is_some() {
+            res = until_and_consume(res.0, b'#')?;
+            path = str::from_utf8(res.1)?;
+        } else {
+            path = str::from_utf8(res.0)?;
+        }
     }
 
 
@@ -125,6 +138,12 @@ pub fn parse(url: &str) -> Result<(&str, &str, u16, &str), UrlParsingError> {
 fn url_test() {
     let url = parse("http://localhost").unwrap();
     assert_eq!(url, ("http", "localhost", 80, "/"));
+
+    let url = parse("http://example.com/").unwrap();
+    assert_eq!(url, ("http", "example.com", 80, "/"));
+
+    let url = parse("http://example.com/path/to/file.html").unwrap();
+    assert_eq!(url, ("http", "example.com", 80, "/path/to/file.html"));
 
     let url = parse("https://localhost").unwrap();
     assert_eq!(url, ("https", "localhost", 443, "/"));
