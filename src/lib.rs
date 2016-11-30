@@ -248,6 +248,12 @@ impl<'a, T> Client<'a, T> {
         where T: Channel + Clone,
               F: Fn(HttpHeader) -> bool
     {
+        // Some methods don't need a body, so if we are in HeadersOrBody state, just
+        // trigger an empty send().
+        if self.state == ClientState::HeadersOrBody {
+            self.send(&[])?;
+        }
+
         assert_eq!(self.state, ClientState::ReadResponse);
         self.state = ClientState::Error;
 
@@ -326,6 +332,28 @@ fn test_get() {
         .open()
         .unwrap()
         .send(&[])
+        .unwrap()
+        .response(|_| true)
+        .unwrap();
+    assert_eq!(response.status_code, 200);
+    assert_eq!(response.status, "OK");
+    assert_eq!(response.headers.len(), 2);
+    assert_eq!(response.headers[0],
+               (HttpHeader::ContentType, String::from("text/html; charset=UTF-8")));
+    assert_eq!(response.headers[1],
+               (HttpHeader::ContentLength, String::from("138")));
+}
+
+#[test]
+fn test_get_no_send() {
+    let http_channel = StringChannel::new("HTTP/1.1 200 OK\r\nContent-Type: text/html; \
+                                           charset=UTF-8\r\nContent-Length: \
+                                           138\r\n\r\n<html><head><title>An Example \
+                                           Page</title></head><body>Hello World, this is a very \
+                                           simple HTML document.</body></html>");
+    let mut client = Client::new(http_channel);
+    let response = client.get("http://localhost:8000/test.html")
+        .open()
         .unwrap()
         .response(|_| true)
         .unwrap();
