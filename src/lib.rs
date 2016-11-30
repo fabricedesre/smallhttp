@@ -140,6 +140,12 @@ impl From<ChannelError> for HttpError {
     }
 }
 
+impl From<HttpError> for () {
+    fn from(_: HttpError) -> () {
+        ()
+    }
+}
+
 pub struct Response<'a, T: 'a> {
     pub status_code: u16,
     pub status: String,
