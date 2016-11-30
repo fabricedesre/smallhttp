@@ -52,6 +52,7 @@ impl HttpMethod {
 // TODO: complete this list.
 #[derive(Clone, Debug, PartialEq)]
 pub enum HttpHeader {
+    Connection,
     ContentLength,
     ContentType,
     Date,
@@ -64,7 +65,9 @@ pub enum HttpHeader {
 
 impl From<String> for HttpHeader {
     fn from(item: String) -> HttpHeader {
-        if item == "Content-Length:" {
+        if item == "Connection:" {
+            HttpHeader::Connection
+        } else if item == "Content-Length:" {
             HttpHeader::ContentLength
         } else if item == "Content-Type:" {
             HttpHeader::ContentType
@@ -88,6 +91,7 @@ impl HttpHeader {
     fn as_string(&self) -> String {
         // We add the space after the header name to simplify serialization.
         let txt = match *self {
+            HttpHeader::Connection => "Connection: ".to_owned(),
             HttpHeader::ContentLength => "Content-Length: ".to_owned(),
             HttpHeader::ContentType => "Content-Type: ".to_owned(),
             HttpHeader::Date => "Date: ".to_owned(),
