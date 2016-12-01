@@ -59,7 +59,7 @@ fn first_pos_of(input: &[u8], delim: u8) -> Option<usize> {
 }
 
 // Returns (scheme, host, port, path)
-pub fn parse(url: &str) -> Result<(&str, &str, u16, &str), UrlParsingError> {
+pub fn parse_url(url: &str) -> Result<(&str, &str, u16, &str), UrlParsingError> {
     let buffer = url.as_bytes();
 
     // Get the scheme
@@ -136,31 +136,34 @@ pub fn parse(url: &str) -> Result<(&str, &str, u16, &str), UrlParsingError> {
 
 #[test]
 fn url_test() {
-    let url = parse("http://localhost").unwrap();
+    let url = parse_url("http://localhost").unwrap();
     assert_eq!(url, ("http", "localhost", 80, "/"));
 
-    let url = parse("http://example.com/").unwrap();
+    let url = parse_url("http://example.com/").unwrap();
     assert_eq!(url, ("http", "example.com", 80, "/"));
 
-    let url = parse("http://example.com/path/to/file.html").unwrap();
+    let url = parse_url("http://example.com/path/to/file.html").unwrap();
     assert_eq!(url, ("http", "example.com", 80, "/path/to/file.html"));
 
-    let url = parse("https://localhost").unwrap();
+    let url = parse_url("https://localhost").unwrap();
     assert_eq!(url, ("https", "localhost", 443, "/"));
 
-    let url = parse("http://localhost:8080").unwrap();
+    let url = parse_url("http://localhost:8080").unwrap();
     assert_eq!(url, ("http", "localhost", 8080, "/"));
 
-    let url = parse("http://localhost:8080/").unwrap();
+    let url = parse_url("http://localhost:8080/").unwrap();
     assert_eq!(url, ("http", "localhost", 8080, "/"));
 
-    let url = parse("http://localhost:8080/index.html").unwrap();
+    let url = parse_url("http://localhost:8080/index.html").unwrap();
     assert_eq!(url, ("http", "localhost", 8080, "/index.html"));
 
-    let url = parse("http://localhost:8080/index.html#hash").unwrap();
+    let url = parse_url("http://localhost:8080/index.html#hash").unwrap();
     assert_eq!(url, ("http", "localhost", 8080, "/index.html"));
 
-    let url = parse("http://localhost:8000/path/to/index.html?foo=bar").unwrap();
+    let url = parse_url("http://localhost:8000/path/to/index.html?foo=bar").unwrap();
     assert_eq!(url,
                ("http", "localhost", 8000, "/path/to/index.html?foo=bar"));
+
+    let url = parse_url("http://api.bewrosnes.org/v1.0/Datastreams").unwrap();
+    assert_eq!(url, ("http", "api.bewrosnes.org", 80, "/v1.0/Datastreams"));
 }

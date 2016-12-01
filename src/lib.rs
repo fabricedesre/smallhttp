@@ -25,8 +25,7 @@ use core::str;
 pub mod traits;
 use traits::{Channel, ChannelError, StringChannel};
 
-mod url;
-// mod parser;
+pub mod url;
 
 pub enum HttpMethod {
     Get,
@@ -186,7 +185,7 @@ impl<'a, T> Client<'a, T> {
         self.state = ClientState::Error;
 
         // Get the host + port + secure state of the url and open the transport layer.
-        let (scheme, host, port, path) = url::parse(self.url)?;
+        let (scheme, host, port, path) = url::parse_url(self.url)?;
         if scheme != "http" && scheme != "https" {
             return Err(HttpError::UnsupportedScheme);
         }
