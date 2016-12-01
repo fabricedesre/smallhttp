@@ -30,8 +30,8 @@ impl From<num::ParseIntError> for UrlParsingError {
 }
 
 fn until_and_consume(input: &[u8], delim: u8) -> Result<(&[u8], &[u8]), UrlParsingError> {
-    for i in 0..input.len() {
-        if input[i] == delim {
+    for (i, item) in input.iter().enumerate() {
+        if *item == delim {
             return Ok((&input[i + 1..], &input[0..i]));
         }
     }
@@ -40,8 +40,8 @@ fn until_and_consume(input: &[u8], delim: u8) -> Result<(&[u8], &[u8]), UrlParsi
 }
 
 fn until(input: &[u8], delim: u8) -> Result<(&[u8], &[u8]), UrlParsingError> {
-    for i in 0..input.len() {
-        if input[i] == delim {
+    for (i, item) in input.iter().enumerate() {
+        if *item == delim {
             return Ok((&input[i..], &input[0..i]));
         }
     }
@@ -50,8 +50,8 @@ fn until(input: &[u8], delim: u8) -> Result<(&[u8], &[u8]), UrlParsingError> {
 }
 
 fn first_pos_of(input: &[u8], delim: u8) -> Option<usize> {
-    for i in 0..input.len() {
-        if input[i] == delim {
+    for (i, item) in input.iter().enumerate() {
+        if *item == delim {
             return Some(i);
         }
     }

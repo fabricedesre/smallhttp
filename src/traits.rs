@@ -60,7 +60,7 @@ pub trait Channel {
         if res.is_err() {
             return Err(ChannelError::InvalidString);
         }
-        return Ok(res.unwrap());
+        Ok(res.unwrap())
     }
 
     // Reads a string into a buffer, wating for a given delimiter.

@@ -38,14 +38,13 @@ pub enum HttpMethod {
 
 impl HttpMethod {
     fn as_str(&self) -> &str {
-        let txt = match *self {
+        match *self {
             HttpMethod::Get => "GET",
             HttpMethod::Head => "HEAD",
             HttpMethod::Post => "POST",
             HttpMethod::Put => "PUT",
             HttpMethod::Delete => "DELETE",
-        };
-        txt
+        }
     }
 }
 
@@ -90,7 +89,7 @@ impl From<String> for HttpHeader {
 impl HttpHeader {
     fn as_string(&self) -> String {
         // We add the space after the header name to simplify serialization.
-        let txt = match *self {
+        match *self {
             HttpHeader::Connection => "Connection: ".to_owned(),
             HttpHeader::ContentLength => "Content-Length: ".to_owned(),
             HttpHeader::ContentType => "Content-Type: ".to_owned(),
@@ -100,8 +99,7 @@ impl HttpHeader {
             HttpHeader::LastModified => "LastModified: ".to_owned(),
             HttpHeader::Server => "Server: ".to_owned(),
             HttpHeader::Other(ref name) => format!("{} ", name),
-        };
-        txt
+        }
     }
 }
 
@@ -285,7 +283,7 @@ impl<'a, T> Client<'a, T> {
         let mut headers = Vec::new();
         loop {
             let header_line = String::from(self.channel.read_string_until(&mut buffer, "\r\n")?);
-            if header_line.len() == 0 {
+            if header_line.is_empty() {
                 break;
             }
 
