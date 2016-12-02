@@ -231,7 +231,7 @@ impl<'a, T> Client<'a, T> {
         self.headers(&[(name, value)])
     }
 
-    pub fn send(&mut self, body: &[u8], flush: bool) -> Result<&mut Self, HttpError>
+    fn _send(&mut self, body: &[u8], final_state: ClientState) -> Result<&mut Self, HttpError>
         where T: Channel
     {
         assert_eq!(self.state, ClientState::HeadersOrBody);
@@ -248,13 +248,23 @@ impl<'a, T> Client<'a, T> {
             self.channel.send(body, body.len())?;
         }
 
-        if flush {
-            self.state = ClientState::ReadResponse;
-        } else {
-            self.state = ClientState::HeadersOrBody;
-        }
+        self.state = final_state;
 
         Ok(self)
+    }
+
+    // Sends a part of the body. Can be called multiple times before a send()
+    pub fn body(&mut self, body: &[u8]) -> Result<&mut Self, HttpError>
+        where T: Channel
+    {
+        self._send(body, ClientState::HeadersOrBody)
+    }
+
+    // Last or single send of a sequence.
+    pub fn send(&mut self, body: &[u8]) -> Result<&mut Self, HttpError>
+        where T: Channel
+    {
+        self._send(body, ClientState::ReadResponse)
     }
 
     pub fn response<F>(&mut self, filter: F) -> Result<Response<T>, HttpError>
@@ -264,7 +274,7 @@ impl<'a, T> Client<'a, T> {
         // Some methods don't need a body, so if we are in HeadersOrBody state, just
         // trigger an empty send().
         if self.state == ClientState::HeadersOrBody {
-            self.send(&[], true)?;
+            self.send(&[])?;
         }
 
         assert_eq!(self.state, ClientState::ReadResponse);
@@ -344,7 +354,7 @@ fn test_get() {
     let response = client.get("http://localhost:8000/test.html")
         .open()
         .unwrap()
-        .send(&[], true)
+        .send(&[])
         .unwrap()
         .response(|_| true)
         .unwrap();
@@ -390,7 +400,7 @@ fn test_get_1_0() {
     let response = client.get("http://localhost:8000/test.html")
         .open()
         .unwrap()
-        .send(&[], true)
+        .send(&[])
         .unwrap()
         .response(|_| true)
         .unwrap();
@@ -414,7 +424,7 @@ fn test_get_1_2() {
     let response = client.get("http://localhost:8000/test.html")
         .open()
         .unwrap()
-        .send(&[], true)
+        .send(&[])
         .unwrap()
         .response(|_| true);
     assert_eq!(response.err().unwrap(), HttpError::InvalidVersion);
@@ -431,7 +441,7 @@ fn test_post() {
     let response = client.post("http://localhost:8000/test.html")
         .open()
         .unwrap()
-        .send(&[], true)
+        .send(&[])
         .unwrap()
         .response(|header_name| header_name == HttpHeader::ContentType)
         .unwrap();
@@ -453,7 +463,7 @@ fn test_body() {
     let response = client.get("http://localhost:8000/test.html")
         .open()
         .unwrap()
-        .send(&[], true)
+        .send(&[])
         .unwrap()
         .response(|_| true)
         .unwrap();
