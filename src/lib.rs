@@ -250,6 +250,8 @@ impl<'a, T> Client<'a, T> {
 
         if flush {
             self.state = ClientState::ReadResponse;
+        } else {
+            self.state = ClientState::HeadersOrBody;
         }
 
         Ok(self)
